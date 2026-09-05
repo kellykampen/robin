@@ -1,6 +1,131 @@
 # Robin
 
-Free AI code reviews for every pull request. You bring an API key; Robin reviews show up like a teammate left comments.
+AI code reviews from your terminal, in any Git repository or worktree. Review
+staged changes before committing, review branch commits before pushing, or get
+JSON findings for a coding agent.
+
+This version adds a local CLI to [antongulin/robin](https://github.com/antongulin/robin).
+It reuses Robin's review prompts, diff filters, model client, and structured findings.
+The original GitHub Action and its installer are still available below.
+
+## Install the local CLI
+
+You need Git and Node.js 18 or newer. Install once on your machine:
+
+```bash
+git clone https://github.com/kellykampen/robin.git ~/code/robin
+cd ~/code/robin
+npm ci
+npm run build:cli
+mkdir -p ~/.local/bin
+if [ ! -e "$HOME/.local/bin/robin" ] && [ ! -L "$HOME/.local/bin/robin" ]; then
+  ln -s "$PWD/bin/robin.js" "$HOME/.local/bin/robin"
+fi
+"$HOME/.local/bin/robin" --help
+```
+
+If you already have this checkout, start at `cd ~/code/robin`. Ensure
+`~/.local/bin` is on your PATH to use `robin` directly. Inspect an existing link
+before replacing it if it points at another checkout. After updating the source,
+run `npm ci && npm run build:cli` again.
+
+`npx robin-review` is the upstream **GitHub Action installer**. It does not install
+this local review CLI.
+
+## Configure your model
+
+Create `~/.config/robin/.env` outside your repositories:
+
+```dotenv
+LLM_BASE_URL=https://openrouter.ai/api/v1
+LLM_MODEL=your-model-id
+LLM_API_KEY=your-api-key
+```
+
+Robin loads this file automatically from every worktree. Shell variables override
+the file, and `--base-url` / `--model` flags override both. Repository `.env` and
+`.env.local` files are not loaded. Keep the global file private with
+`chmod 600 ~/.config/robin/.env`.
+
+The CLI runs locally and sends the filtered diff to your configured model.
+For a local Ollama server, use `LLM_BASE_URL=http://localhost:11434/v1` and the
+name of an installed model. Localhost endpoints do not require an API key.
+
+## Review changes
+
+Run these commands from the repository or worktree you want to review:
+
+```bash
+# Preview the diff without calling a model
+robin review --base origin/main --dry-run
+
+# Branch changes since the merge base, plus tracked uncommitted edits
+robin review --base origin/main
+
+# Only staged changes
+robin review --staged
+
+# Staged and unstaged tracked changes against HEAD, the default scope
+robin review --working-tree
+
+# Committed branch content, excluding uncommitted edits
+robin review --base origin/main --head HEAD
+
+# JSON for agents, with a failing exit code for high-severity findings
+robin review --staged --format json --fail-on high
+
+# Add repository-specific reviewer instructions
+robin review --base origin/main --instructions AGENTS.md
+```
+
+Untracked files are excluded; stage new files to include them. Base refs are local
+and are never fetched automatically. A spinner on stderr shows that a review is
+running, while JSON stdout stays clean. Without an interactive terminal, progress
+appears as plain text.
+
+Exit codes are `0` for completion below the threshold or nothing to review, `1`
+when findings reach `--fail-on`, and `2` when a review cannot complete. The default
+threshold is `none`; choose `high`, `medium`, or `low` to block on that severity
+and above. Suggestions remain advisory.
+
+## Husky hooks
+
+In a repository where Husky is already installed, add this to `.husky/pre-commit`
+after any existing formatting checks:
+
+```sh
+if [ "$ROBIN_SKIP" != "1" ]; then
+  robin review --staged --fail-on high || exit $?
+fi
+```
+
+Add this to `.husky/pre-push`, preserving Git's stdin for Robin. Existing checks
+that do not need the ref-update input should run with `</dev/null`:
+
+```sh
+if [ "$ROBIN_SKIP" != "1" ]; then
+  robin pre-push "$@" || exit $?
+fi
+```
+
+`robin pre-push` reads Git's ref updates and reviews the exact commits being
+pushed, even when they belong to another local branch. It applies the high-severity
+threshold internally. New branches use the remote's locally cached default branch;
+set `ROBIN_BASE=origin/main` if needed. Tags and branch deletions are skipped.
+
+Use `ROBIN_SKIP=1 git commit` or `ROBIN_SKIP=1 git push` for an explicit one-command
+bypass. A missing CLI, provider failure, or high-severity finding otherwise blocks
+the operation. For GUI Git clients, ensure their PATH includes Robin or use
+`"$HOME/.local/bin/robin"` in the hooks. Two review passes can still miss issues;
+keep tests and human review in the workflow.
+
+See the [local CLI guide](docs/LOCAL-CLI.md) for diff limits, skip-path configuration,
+output formats, and development commands.
+
+## Upstream GitHub Action
+
+The remaining sections describe the original GitHub Action workflow, which posts
+reviews on pull requests and uses GitHub Secrets for provider configuration.
 
 [![Self-Test](https://github.com/antongulin/robin/actions/workflows/self-test.yml/badge.svg)](https://github.com/antongulin/robin/actions/workflows/self-test.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
