@@ -3,10 +3,12 @@
   "version": "2.7.2",
   "description": "Free AI code reviews for every PR. BYOK, works with OpenRouter free tier.",
   "bin": {
-    "robin-review": "bin/robin-review.js"
+    "robin-review": "bin/robin-review.js",
+    "robin": "bin/robin.js"
   },
   "files": [
-    "bin/"
+    "bin/",
+    "lib/"
   ],
   "engines": {
     "node": ">=18"
@@ -28,7 +30,8 @@
     "dev": "ts-node src/main.ts",
     "lint": "eslint src/**/*.ts",
     "test": "jest",
-    "package": "ncc build dist/index.js -o dist --license licenses.txt && npm run clean"
+    "package": "ncc build dist/index.js -o dist --license licenses.txt && npm run clean",
+    "build:cli": "tsc -p tsconfig.cli.json"
   },
   "keywords": [
     "github-action",
@@ -45,6 +48,7 @@
     "@actions/core": "^1.10.1",
     "@actions/github": "^6.0.0",
     "@octokit/rest": "^20.0.2",
+    "dotenv": "^17.4.2",
     "openai": "^4.28.4"
   },
   "overrides": {

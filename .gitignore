@@ -20,3 +20,6 @@ docs/superpowers/
 # TypeScript build output — only the ncc bundle is published
 dist/*
 !dist/index.js
+
+# Local CLI build output
+lib/

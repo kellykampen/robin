@@ -30,7 +30,7 @@ export class ReviewParser {
     return this.parseDetailed(rawText).findings;
   }
 
-  static parseDetailed(rawText: string): ParsedReview {
+  static parseDetailed(rawText: string, logger: Pick<typeof core, "info" | "warning"> = core): ParsedReview {
     const review: StructuredReview = {
       summary: "",
       high: [],
@@ -43,7 +43,7 @@ export class ReviewParser {
     try {
       const jsonReview = this.parseJsonReview(rawText);
       if (jsonReview) {
-        core.info(
+        logger.info(
           `Parsed JSON review: ${jsonReview.high.length} high, ${jsonReview.medium.length} medium, ${jsonReview.low.length} low, ${jsonReview.suggestions.length} suggestions`
         );
         return { findings: jsonReview, usedJson: true };
@@ -56,9 +56,9 @@ export class ReviewParser {
       review.low = markdownReview.low;
       review.suggestions = markdownReview.suggestions;
 
-      core.info(`Parsed: ${review.high.length} high, ${review.medium.length} medium, ${review.low.length} low, ${review.suggestions.length} suggestions`);
+      logger.info(`Parsed: ${review.high.length} high, ${review.medium.length} medium, ${review.low.length} low, ${review.suggestions.length} suggestions`);
     } catch (error) {
-      core.warning(`Failed to parse structured review: ${error}. Treating entire response as raw summary.`);
+      logger.warning(`Failed to parse structured review: ${error}. Treating entire response as raw summary.`);
       review.summary = rawText;
     }
 

@@ -41,7 +41,8 @@ export class LLMClient {
     timeoutMs = DEFAULT_LLM_TIMEOUT_MS,
     maxAttempts = DEFAULT_LLM_COMPLETION_ATTEMPTS,
     temperature = DEFAULT_LLM_TEMPERATURE,
-    onProgress?: LlmProgressHandler
+    onProgress?: LlmProgressHandler,
+    private logger: Pick<typeof core, "info" | "warning" | "error"> = core
   ) {
     this.model = model;
     this.temperature = temperature;
@@ -54,7 +55,7 @@ export class LLMClient {
     this.maxAttempts = getLlmCompletionAttemptCount(maxAttempts, model);
     const effectiveTimeoutMs = resolveLlmTimeoutMs(model, timeoutMs);
 
-    core.info(
+    this.logger.info(
       `Initializing LLM client: baseUrl=${baseUrl}, model=${model}, timeout=${effectiveTimeoutMs} ms, maxAttempts=${this.maxAttempts}, temperature=${this.temperature}`
     );
 
@@ -67,7 +68,7 @@ export class LLMClient {
     });
 
     if (this.routerModel) {
-      core.info(
+      this.logger.info(
         `OpenRouter router model — ${DEFAULT_LLM_ROUTER_FIRST_CHUNK_MS / 1000}s first-chunk stall detect, ${effectiveTimeoutMs / 1000}s stream cap, provider fallbacks.`
       );
     }
@@ -82,7 +83,7 @@ export class LLMClient {
     try {
       await this.onProgress(detail);
     } catch (error) {
-      core.warning(`LLM progress update failed (non-fatal): ${error}`);
+      this.logger.warning(`LLM progress update failed (non-fatal): ${error}`);
     }
   }
 
@@ -98,7 +99,7 @@ export class LLMClient {
       const useJson = shouldUseJsonResponseMode(attempt, jsonResponseMode);
 
       try {
-        core.info(`LLM attempt ${attempt}/${this.maxAttempts}: waiting for provider...`);
+        this.logger.info(`LLM attempt ${attempt}/${this.maxAttempts}: waiting for provider...`);
         await this.progress(
           `Waiting for provider (attempt ${attempt}/${this.maxAttempts})…`
         );
@@ -115,15 +116,15 @@ export class LLMClient {
         }
 
         lastFinishReason = "empty";
-        core.warning(
+        this.logger.warning(
           `LLM attempt ${attempt}/${this.maxAttempts}: empty content${useJson ? " (json mode)" : ""}`
         );
       } catch (error) {
         lastError = error;
-        core.warning(`LLM attempt ${attempt}/${this.maxAttempts} failed: ${error}`);
+        this.logger.warning(`LLM attempt ${attempt}/${this.maxAttempts} failed: ${error}`);
 
         if (!isRetriableLlmError(error, this.retryContext()) || attempt === this.maxAttempts) {
-          core.error(`LLM API error: ${error}`);
+          this.logger.error(`LLM API error: ${error}`);
           throw new Error(`Failed to get response from LLM: ${error}`);
         }
       }
@@ -131,7 +132,7 @@ export class LLMClient {
       if (attempt < this.maxAttempts) {
         const waitMs = computeRetryDelayMs(attempt, this.retryContext());
         const reason = lastError instanceof Error ? lastError.message : "empty response";
-        core.info(`Retrying LLM request in ${waitMs} ms (attempt ${attempt + 1}/${this.maxAttempts})...`);
+        this.logger.info(`Retrying LLM request in ${waitMs} ms (attempt ${attempt + 1}/${this.maxAttempts})...`);
         await this.progress(
           `Attempt ${attempt} did not succeed (${reason}). Retrying in ${Math.round(waitMs / 1000)}s…`
         );
@@ -140,7 +141,7 @@ export class LLMClient {
     }
 
     if (lastError && isRetriableLlmError(lastError, this.retryContext())) {
-      core.error(`LLM API error after ${this.maxAttempts} attempts: ${lastError}`);
+      this.logger.error(`LLM API error after ${this.maxAttempts} attempts: ${lastError}`);
       throw new Error(
         `Failed to get response from LLM after ${this.maxAttempts} attempts: ${lastError}`
       );
@@ -198,10 +199,10 @@ export class LLMClient {
           clearStallTimer();
           resolvedModel = chunk.model || resolvedModel;
           if (chunk.model && chunk.model !== this.model) {
-            core.info(`LLM resolved model: ${chunk.model} (requested: ${this.model})`);
+            this.logger.info(`LLM resolved model: ${chunk.model} (requested: ${this.model})`);
             await this.progress(`Routed to \`${chunk.model}\` — generating review…`);
           } else {
-            core.info("OpenRouter stream started — provider accepted the request.");
+            this.logger.info("OpenRouter stream started — provider accepted the request.");
             await this.progress("Provider accepted the request — generating review…");
           }
         }
@@ -259,16 +260,16 @@ export class LLMClient {
 
   private logResolvedModel(resolvedModel: string): void {
     if (resolvedModel && resolvedModel !== this.model) {
-      core.info(`LLM resolved model: ${resolvedModel} (requested: ${this.model})`);
+      this.logger.info(`LLM resolved model: ${resolvedModel} (requested: ${this.model})`);
     } else {
-      core.info(`LLM response model: ${resolvedModel}`);
+      this.logger.info(`LLM response model: ${resolvedModel}`);
     }
   }
 
   private extractMessageContent(response: OpenAI.Chat.Completions.ChatCompletion): string {
     const choice = response.choices?.[0];
     if (!choice) {
-      core.warning("LLM response has no choices array.");
+      this.logger.warning("LLM response has no choices array.");
       return "";
     }
 
@@ -277,7 +278,7 @@ export class LLMClient {
       return content;
     }
 
-    core.warning(
+    this.logger.warning(
       `LLM choice has no text content (finish_reason=${choice.finish_reason || "unknown"}).`
     );
     return "";
