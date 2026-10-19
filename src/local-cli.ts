@@ -66,7 +66,7 @@ function validateResponse(content: string): string {
 
 async function main(): Promise<void> {
   if (process.argv[2] === "pre-push") {
-    process.exitCode = await prePush(process.argv[3] || "origin");
+    process.exitCode = await prePush(process.argv[3] || "origin", process.argv[4]);
     return;
   }
   const { values, positionals } = parseArgs({

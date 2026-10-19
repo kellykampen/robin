@@ -110,7 +110,19 @@ loopback HTTP server. They need no real API key or network provider.
 
 `robin pre-push "$@"` consumes Git's ref updates on stdin. It reviews each pushed
 branch at its exact commit with `--head`, using `--fail-on high`. Existing branches
-compare against the previous remote tip's merge base. New branches use the
+compare against the previous remote tip's merge base for fast-forward updates.
+Divergent published topics instead use a unique merge base with the target
+remote's currently advertised default-branch commit at Git's actual push URL
+(the hook's second argument, or a single configured push URL for direct CLI
+use). Direct calls with multiple configured push URLs must supply the destination.
+This excludes inherited
+trunk changes while retaining the complete remaining topic diff, including new
+repairs. Local tracking refs and `ROBIN_BASE` cannot narrow this scope. Fetch the
+advertised commit first; an unknown remote/default branch, missing object or
+ambiguous/unrelated ancestry blocks review before model I/O. A force push to the
+default branch still uses its previous tip. Every ref is validated before any
+model request, including when the same push proposes a new default-branch tip.
+New branches use the
 remote's locally cached default branch, or `ROBIN_BASE` when explicitly set.
 Fetch missing base refs before pushing. Tags and deleted branches are skipped.
 `ROBIN_SKIP=1` bypasses the review explicitly. Provider failures block the push.
