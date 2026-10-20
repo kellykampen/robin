@@ -1,6 +1,7 @@
 import { execFileSync, spawn, spawnSync } from "child_process";
 import { readFileSync } from "fs";
 
+/** Run a bounded Git query without exposing remote credentials in command output. */
 function git(args: string[]): string {
   return execFileSync("git", args, {
     encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 10000, maxBuffer: 1024 * 1024,
@@ -9,6 +10,7 @@ function git(args: string[]): string {
 
 type RemoteDefault = { ref: string; head: string };
 
+/** Read one server-advertised default branch at the actual, unambiguous push destination. */
 function advertisedDefault(remote: string, destination?: string): RemoteDefault {
   const destinations = destination === undefined
     ? git(["remote", "get-url", "--push", "--all", remote]).split("\n") : [destination];
@@ -23,6 +25,7 @@ function advertisedDefault(remote: string, destination?: string): RemoteDefault 
   return { ref: defaultRef, head: defaultHead };
 }
 
+/** Preserve fast-forward deltas and select a unique accepted base for rewritten topics. */
 function publishedBase(getDefault: () => RemoteDefault, target: string, old: string, head: string): string {
   // Preserve ordinary incremental review, including pushes to the default branch.
   if (git(["rev-parse", "--verify", "--end-of-options", `${old}^{commit}`]) !== old) {

@@ -64,6 +64,7 @@ function validateResponse(content: string): string {
   }
 }
 
+/** Route hook invocations or review committed/local source under the configured size and severity gates. */
 async function main(): Promise<void> {
   if (process.argv[2] === "pre-push") {
     process.exitCode = await prePush(process.argv[3] || "origin", process.argv[4]);

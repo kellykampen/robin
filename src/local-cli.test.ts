@@ -156,6 +156,7 @@ test("pre-push skips deletion, tags and empty pushes", async () => {
 
 
 describe("published rebases", () => {
+  /** Publish the fixture main branch and advertise it as the bare remote default. */
   function publishDefault() {
     const remote = join(root, "remote.git");
     git("init", "--bare", remote);
@@ -164,10 +165,12 @@ describe("published rebases", () => {
     execFileSync("git", ["--git-dir", remote, "symbolic-ref", "HEAD", "refs/heads/main"]);
     return remote;
   }
+  /** Commit a fixture file and return its immutable revision. */
   function commitFile(name: string, contents: string) {
     writeFileSync(join(repo, name), contents); git("add", name); git("commit", "-m", name);
     return git("rev-parse", "HEAD").trim();
   }
+  /** Rebase a published topic over oversized accepted trunk, then add an owned repair and deletion. */
   function rebasedTopic() {
     publishDefault();
     git("checkout", "-b", "topic");
