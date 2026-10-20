@@ -111,7 +111,14 @@ fi
 `robin pre-push` reads Git's ref updates and reviews the exact commits being
 pushed, even when they belong to another local branch. It applies the high-severity
 threshold internally. New branches use the remote's locally cached default branch;
-set `ROBIN_BASE=origin/main` if needed. Tags and branch deletions are skipped.
+set `ROBIN_BASE=origin/main` if needed. Fast-forward pushes review the incremental
+changes since the previous remote tip. A divergent published topic (for example,
+a rebase) reviews its complete remaining changes against the target remote's
+currently advertised default branch at Git's actual push destination. Local tracking refs and `ROBIN_BASE` cannot
+narrow that review. Fetch the advertised commit first; missing or ambiguous
+ancestry blocks the push. Default-branch force pushes still compare against the
+previous tip. Every ref is validated before model requests begin. Tags and branch
+deletions are skipped.
 
 Use `ROBIN_SKIP=1 git commit` or `ROBIN_SKIP=1 git push` for an explicit one-command
 bypass. A missing CLI, provider failure, or high-severity finding otherwise blocks

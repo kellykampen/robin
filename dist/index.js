@@ -675,6 +675,7 @@ const config_1 = __nccwpck_require__(4008);
 const llm_retry_1 = __nccwpck_require__(4069);
 const core = __importStar(__nccwpck_require__(7484));
 class LLMClient {
+    logger;
     client;
     model;
     maxOutputTokens;
@@ -682,7 +683,8 @@ class LLMClient {
     routerModel;
     temperature;
     onProgress;
-    constructor(baseUrl, apiKey, model, maxOutputTokens, timeoutMs = config_1.DEFAULT_LLM_TIMEOUT_MS, maxAttempts = config_1.DEFAULT_LLM_COMPLETION_ATTEMPTS, temperature = config_1.DEFAULT_LLM_TEMPERATURE, onProgress) {
+    constructor(baseUrl, apiKey, model, maxOutputTokens, timeoutMs = config_1.DEFAULT_LLM_TIMEOUT_MS, maxAttempts = config_1.DEFAULT_LLM_COMPLETION_ATTEMPTS, temperature = config_1.DEFAULT_LLM_TEMPERATURE, onProgress, logger = core) {
+        this.logger = logger;
         this.model = model;
         this.temperature = temperature;
         this.routerModel = (0, llm_retry_1.isOpenRouterRouterModel)(model);
@@ -693,7 +695,7 @@ class LLMClient {
                 : undefined;
         this.maxAttempts = (0, llm_retry_1.getLlmCompletionAttemptCount)(maxAttempts, model);
         const effectiveTimeoutMs = (0, llm_retry_1.resolveLlmTimeoutMs)(model, timeoutMs);
-        core.info(`Initializing LLM client: baseUrl=${baseUrl}, model=${model}, timeout=${effectiveTimeoutMs} ms, maxAttempts=${this.maxAttempts}, temperature=${this.temperature}`);
+        this.logger.info(`Initializing LLM client: baseUrl=${baseUrl}, model=${model}, timeout=${effectiveTimeoutMs} ms, maxAttempts=${this.maxAttempts}, temperature=${this.temperature}`);
         // ponytail: chatCompletion owns retries; SDK maxRetries × 10-min timeout burned whole job budgets
         this.client = new openai_1.OpenAI({
             baseURL: baseUrl,
@@ -702,7 +704,7 @@ class LLMClient {
             timeout: effectiveTimeoutMs,
         });
         if (this.routerModel) {
-            core.info(`OpenRouter router model — ${config_1.DEFAULT_LLM_ROUTER_FIRST_CHUNK_MS / 1000}s first-chunk stall detect, ${effectiveTimeoutMs / 1000}s stream cap, provider fallbacks.`);
+            this.logger.info(`OpenRouter router model — ${config_1.DEFAULT_LLM_ROUTER_FIRST_CHUNK_MS / 1000}s first-chunk stall detect, ${effectiveTimeoutMs / 1000}s stream cap, provider fallbacks.`);
         }
     }
     retryContext() {
@@ -715,7 +717,7 @@ class LLMClient {
             await this.onProgress(detail);
         }
         catch (error) {
-            core.warning(`LLM progress update failed (non-fatal): ${error}`);
+            this.logger.warning(`LLM progress update failed (non-fatal): ${error}`);
         }
     }
     async chatCompletion(systemPrompt, userContent, jsonResponseMode = false) {
@@ -724,7 +726,7 @@ class LLMClient {
         for (let attempt = 1; attempt <= this.maxAttempts; attempt++) {
             const useJson = (0, llm_retry_1.shouldUseJsonResponseMode)(attempt, jsonResponseMode);
             try {
-                core.info(`LLM attempt ${attempt}/${this.maxAttempts}: waiting for provider...`);
+                this.logger.info(`LLM attempt ${attempt}/${this.maxAttempts}: waiting for provider...`);
                 await this.progress(`Waiting for provider (attempt ${attempt}/${this.maxAttempts})…`);
                 const request = this.buildRequest(systemPrompt, userContent, useJson);
                 const { content, model: resolvedModel } = this.routerModel
@@ -737,26 +739,26 @@ class LLMClient {
                     return { content, model: resolvedModel };
                 }
                 lastFinishReason = "empty";
-                core.warning(`LLM attempt ${attempt}/${this.maxAttempts}: empty content${useJson ? " (json mode)" : ""}`);
+                this.logger.warning(`LLM attempt ${attempt}/${this.maxAttempts}: empty content${useJson ? " (json mode)" : ""}`);
             }
             catch (error) {
                 lastError = error;
-                core.warning(`LLM attempt ${attempt}/${this.maxAttempts} failed: ${error}`);
+                this.logger.warning(`LLM attempt ${attempt}/${this.maxAttempts} failed: ${error}`);
                 if (!(0, llm_retry_1.isRetriableLlmError)(error, this.retryContext()) || attempt === this.maxAttempts) {
-                    core.error(`LLM API error: ${error}`);
+                    this.logger.error(`LLM API error: ${error}`);
                     throw new Error(`Failed to get response from LLM: ${error}`);
                 }
             }
             if (attempt < this.maxAttempts) {
                 const waitMs = (0, llm_retry_1.computeRetryDelayMs)(attempt, this.retryContext());
                 const reason = lastError instanceof Error ? lastError.message : "empty response";
-                core.info(`Retrying LLM request in ${waitMs} ms (attempt ${attempt + 1}/${this.maxAttempts})...`);
+                this.logger.info(`Retrying LLM request in ${waitMs} ms (attempt ${attempt + 1}/${this.maxAttempts})...`);
                 await this.progress(`Attempt ${attempt} did not succeed (${reason}). Retrying in ${Math.round(waitMs / 1000)}s…`);
                 await (0, llm_retry_1.delayMs)(waitMs);
             }
         }
         if (lastError && (0, llm_retry_1.isRetriableLlmError)(lastError, this.retryContext())) {
-            core.error(`LLM API error after ${this.maxAttempts} attempts: ${lastError}`);
+            this.logger.error(`LLM API error after ${this.maxAttempts} attempts: ${lastError}`);
             throw new Error(`Failed to get response from LLM after ${this.maxAttempts} attempts: ${lastError}`);
         }
         throw new Error(`Empty response from LLM after ${this.maxAttempts} attempts (finish_reason=${lastFinishReason})`);
@@ -796,11 +798,11 @@ class LLMClient {
                     clearStallTimer();
                     resolvedModel = chunk.model || resolvedModel;
                     if (chunk.model && chunk.model !== this.model) {
-                        core.info(`LLM resolved model: ${chunk.model} (requested: ${this.model})`);
+                        this.logger.info(`LLM resolved model: ${chunk.model} (requested: ${this.model})`);
                         await this.progress(`Routed to \`${chunk.model}\` — generating review…`);
                     }
                     else {
-                        core.info("OpenRouter stream started — provider accepted the request.");
+                        this.logger.info("OpenRouter stream started — provider accepted the request.");
                         await this.progress("Provider accepted the request — generating review…");
                     }
                 }
@@ -845,23 +847,23 @@ class LLMClient {
     }
     logResolvedModel(resolvedModel) {
         if (resolvedModel && resolvedModel !== this.model) {
-            core.info(`LLM resolved model: ${resolvedModel} (requested: ${this.model})`);
+            this.logger.info(`LLM resolved model: ${resolvedModel} (requested: ${this.model})`);
         }
         else {
-            core.info(`LLM response model: ${resolvedModel}`);
+            this.logger.info(`LLM response model: ${resolvedModel}`);
         }
     }
     extractMessageContent(response) {
         const choice = response.choices?.[0];
         if (!choice) {
-            core.warning("LLM response has no choices array.");
+            this.logger.warning("LLM response has no choices array.");
             return "";
         }
         const content = choice.message?.content;
         if (typeof content === "string" && content.trim()) {
             return content;
         }
-        core.warning(`LLM choice has no text content (finish_reason=${choice.finish_reason || "unknown"}).`);
+        this.logger.warning(`LLM choice has no text content (finish_reason=${choice.finish_reason || "unknown"}).`);
         return "";
     }
 }
@@ -1810,7 +1812,7 @@ class ReviewParser {
     static parse(rawText) {
         return this.parseDetailed(rawText).findings;
     }
-    static parseDetailed(rawText) {
+    static parseDetailed(rawText, logger = core) {
         const review = {
             summary: "",
             high: [],
@@ -1822,7 +1824,7 @@ class ReviewParser {
         try {
             const jsonReview = this.parseJsonReview(rawText);
             if (jsonReview) {
-                core.info(`Parsed JSON review: ${jsonReview.high.length} high, ${jsonReview.medium.length} medium, ${jsonReview.low.length} low, ${jsonReview.suggestions.length} suggestions`);
+                logger.info(`Parsed JSON review: ${jsonReview.high.length} high, ${jsonReview.medium.length} medium, ${jsonReview.low.length} low, ${jsonReview.suggestions.length} suggestions`);
                 return { findings: jsonReview, usedJson: true };
             }
             const markdownReview = this.parseMarkdownReview(rawText, review);
@@ -1831,10 +1833,10 @@ class ReviewParser {
             review.medium = markdownReview.medium;
             review.low = markdownReview.low;
             review.suggestions = markdownReview.suggestions;
-            core.info(`Parsed: ${review.high.length} high, ${review.medium.length} medium, ${review.low.length} low, ${review.suggestions.length} suggestions`);
+            logger.info(`Parsed: ${review.high.length} high, ${review.medium.length} medium, ${review.low.length} low, ${review.suggestions.length} suggestions`);
         }
         catch (error) {
-            core.warning(`Failed to parse structured review: ${error}. Treating entire response as raw summary.`);
+            logger.warning(`Failed to parse structured review: ${error}. Treating entire response as raw summary.`);
             review.summary = rawText;
         }
         return { findings: review, usedJson: false };
